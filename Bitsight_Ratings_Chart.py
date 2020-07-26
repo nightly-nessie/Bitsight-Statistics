@@ -1,10 +1,13 @@
+#!/usr/bin/env python
+# coding: utf-8
+
 import requests
 import json
 import datetime
 
 YYYYMMDD = datetime.datetime.now()
 
-api_key = '#api_key'
+api_key = ''
 folder_rating = requests.get('https://api.bitsighttech.com/ratings/v1/folders/#folder_guid/graph_data', auth=(api_key, ''))
 
 json_folder_rating = folder_rating.text
@@ -12,106 +15,108 @@ folder_rating_dict = json.loads(json_folder_rating)
 #
 # Fetching the latest rating performed in Bitsight and take this as the current rating
 #
+
 folder_rating_value = folder_rating_dict['ratings'][-1]['y']
 #print(folder_rating_value) # Check the returned value
+
 folder_rating_date = folder_rating_dict['ratings'][-1]['x']
 #print(folder_rating_date) # Check the returned value
 
-rating_date_current = folder_rating_date
 #
-# Or, fill out a date of your choosing
+# Determine Porfolio length
 #
-#rating_date_current = 'YYYY-MM-DD'
-rating_date_current_obj = datetime.datetime.strptime(rating_date_current, "%Y-%m-%d")
-#print(rating_date_current_obj) # Check the returned value
-rating_date_previous_month = rating_date_current_obj + datetime.timedelta(days=-28)
-#print(rating_date_previous_month) # Check the returned value
-rating_date_previous = rating_date_previous_month.date()
-#
-# Or, fill out a date of your choosing
-#
-#rating_date_previous = 'YYYY-MM-DD'
 
-#print(rating_date_previous) # Check the returned value
-
+portfolio_date_current = folder_rating_date
 params = (
-    ('rating_date', rating_date_previous),
-)
-response_prev = requests.get('https://api.bitsighttech.com/ratings/v1/companies', params=params, auth=(api_key, ''))
-params = (
-    ('rating_date', rating_date_current),
+    ('rating_date', portfolio_date_current),
 )
 response_cur = requests.get('https://api.bitsighttech.com/ratings/v1/companies', params=params, auth=(api_key, ''))
-
-#print(response_cur.status_code) # Check the returned value
-#print(response_prev.text) # Check the returned value
-#print(response_cur.text) # Check the returned value
-
-json_resp_prev = response_prev.json()
 json_resp_cur = response_cur.json()
+portfolio_count=len(json_resp_cur['companies'])
 
 #
-# Test the returned value for a random company from the dictionary
+# Running through the portfolio, adding the guid in front
 #
-#print(json_resp_prev["companies"][18]["name"] + ',' + str(json_resp_prev["companies"][18]["rating"]))
-#print(json_resp_cur)
 
-#
-# Running through the knwon numbers of company in the portfolio, adding the listvalue in front
-#
 #company_list = []
-#for x in range (0, 23): # Should be changed into a dynamic value, reading the numbers of companies in the portfolio
-#    company_list.append(str(x) + ' ' + json_resp_cur["companies"][x]["name"]);
+#for x in range (0, portfolio_count):
+#    company_list.append(json_resp_cur["companies"][x]["guid"] + "\t" + json_resp_cur["companies"][x]["name"]);
 #print(*company_list, sep = "\n")
 
 #
-# Adjusted grouped list, any order can do but, use previous block to figure out the listvalues
-# Now in alfabetical order, taking the entire portfolio, except:
-# PSA Marine (6)
+# Build the Portfolio Dictionary
 #
-order_list = [19,8,10,9,7,5,20,12,13,11,18,16,22,3,4,2,1,0,14,15,17,21]
+
+company_guid = []
+for i in range (0, portfolio_count):
+    company_guid.append(json_resp_cur["companies"][i]["guid"])
+
+company_name = []
+for j in range (0, portfolio_count):
+    company_name.append(json_resp_cur["companies"][j]["name"])
+
+company_dict = {}
+company_dict['company_guid'] = company_guid
+company_dict['company_name'] = company_name
+
+ordered_portfolio_list = [""]
+order_list = []
+
+#
+# Generate list of the indices to query the Portfolio Dictionary
+#
+
+for k in ordered_portfolio_list:
+    loc = company_dict['company_guid'].index(k)
+    order_list.append(loc)
+
+#
+# Generate list of company names according the ordered portfolio list
+#
+
 company_list = []
 for i in order_list:
     company_list.append(json_resp_cur["companies"][i]["name"])
 
-#
-# Check the order of the adjusted list
-#
-#print(*company_list, sep = "\n")
-
 previous_values = []
-for i in order_list:
-    previous_values.append(json_resp_prev["companies"][i]["rating"])
-
 current_values = []
-for i in order_list:
-    current_values.append(json_resp_cur["companies"][i]["rating"])
+
+for i in ordered_portfolio_list:
+    #
+    # Check the GUID used
+    #
+    #print(i)
+    response_company = requests.get('https://api.bitsighttech.com/ratings/v1/companies/' + i, auth=(api_key, ''))
+    json_response_company = response_company.json()
+    #
+    # Check the build-up of the list
+    #
+    #print(json_response_company['name'])
+    #
+    # index 28 represents 28 days prior to the latest available rating
+    # index 0 represents the latest available resut of the rating, which usually is the day before
+    # index 365 would then present a year ago
+    #
+    previous_values.append(json_response_company['ratings'][28]['rating'])
+    rating_date_previous = json_response_company['ratings'][28]['rating_date']
+    current_values.append(json_response_company['ratings'][0]['rating'])
+    rating_date_current = json_response_company['ratings'][0]['rating_date']
+#
+# Check if the ordered list is correct
+#
+
+#print(*company_list, sep = "\n")
 
 rating = {}
 rating[rating_date_previous] = previous_values
 rating[rating_date_current] = current_values
 
-#
-# Check the returned rating values
-#
 #print(previous_values)
 #print(current_values)
 #print(rating)
 
-#
-# Panda based chart
-#
-#import pandas as pd
-
-#import matplotlib.pyplot as plot
-
-#dataFrame = pd.DataFrame(data=rating, index=company_list);
- 
-#dataFrame.plot.bar(rot=85, title="Bitsight Ratings", figsize=(30,5), ylim=(400,820));
-#plot.show(block=True);
-
 import matplotlib
-matplotlib.use('Agg') # When deployed in a terminal
+matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 import numpy as np
 
@@ -147,14 +152,14 @@ autolabel(rects2)
 
 #fig.tight_layout() # Condenses the height
 
-plt.hlines(y=740, xmin=-0.5, xmax=22.5, color='g', alpha=0.7, linestyle='dotted', linewidth=3)
-plt.hlines(y=folder_rating_value, xmin=-0.5, xmax=22.5, color='b', alpha=0.7, linestyle='--', linewidth=2)
+plt.hlines(y=740, xmin=-0.5, xmax=23.5, color='g', alpha=0.7, linestyle='dotted', linewidth=3)
+plt.hlines(y=folder_rating_value, xmin=-0.5, xmax=23.5, color='b', alpha=0.7, linestyle='--', linewidth=2)
 plt.grid(True, alpha=0.2)
 
 filename = (YYYYMMDD.strftime("%Y%m%d") + '_Bitsight_Ratings_' + str(rating_date_previous) + '_and_' + str(rating_date_current) + '.png')
 
 plt.savefig(filename, bbox_inches='tight')
-plt.show() # Only when not running on a terminal
+#plt.show()
 
 import email, smtplib, ssl
 
@@ -164,10 +169,10 @@ from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 
 subject = "Weekly Bitsight Rating Chart - " + str(YYYYMMDD.date())
-body = "#blahblah"
-sender_email = "#fromemail"
-receiver_email = "#toemail"
-password = "#password"
+body = "Please find the lateste rating chart in attachment."
+sender_email = ""
+receiver_email = ""
+password = ""
 
 # Create a multipart message and set headers
 message = MIMEMultipart()
@@ -185,7 +190,7 @@ with open(filename, "rb") as attachment:
     part = MIMEBase("application", "octet-stream")
     part.set_payload(attachment.read())
 
-# Encode file in ASCII characters to send by email    
+# Encode file in ASCII characters to send by email
 encoders.encode_base64(part)
 
 # Add header as key/value pair to attachment part
